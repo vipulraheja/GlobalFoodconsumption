@@ -1,0 +1,1309 @@
+<!DOCTYPE html>
+<html class="ocks-org do-not-copy">
+<meta charset="utf-8">
+<title>The Evolution of Global Food Consumption</title>
+<style>
+
+@import url(../style.css?aea6f0a);
+
+#chart {
+  margin-left: -40px;
+  height: 506px;
+}
+
+text {
+  font: 10px sans-serif;
+}
+
+.dot {
+  stroke: #000;
+}
+
+.axis path, .axis line {
+  fill: none;
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+.label {
+  fill: #777;
+}
+
+.year.label {
+  font: 500 196px "Helvetica Neue";
+  fill: #ddd;
+}
+
+.year.label.active {
+  fill: #aaa;
+}
+
+.label_meat {
+  fill: #777;
+}
+
+.year.label_meat {
+  font: 500 98px "Helvetica Neue";
+  fill: #ddd;
+}
+
+.year.label_meat.active {
+  fill: #aaa;
+}
+
+.overlay {
+  fill: none;
+  pointer-events: all;
+  cursor: ew-resize;
+}
+
+</style>
+
+<header>
+  <aside>September 8, 2014</aside>
+  <a href="mailto:vr2337@columbia.edu" rel="author">Vipul Raheja</a>
+  <br />
+  <br />
+  <a href="#">Time Evolving Bubble Graphs</a>
+    <br />
+  <br />
+  <a href="choropleth/test.html">Time Evolving Choropleths</a>
+</header>
+
+<h1>The Evolution of Global Food Consumption</h1>
+
+<h2>Total Food Consumption (KCal per capita) as a variation of GDP and Urbanization from 1970-2010</h1>
+<p id="chart"></p>
+
+<br />
+
+<h2>Percent share of various food items in the diet (KCal per capita) as a variation of GDP and Urbanization from 1970-2010</h2>
+<h2 style="width: 600px; float: left;">Vegetables</h2>
+<p>
+<h2 style="width: 600px; float: right;">Food Crops</h2>
+
+<p id="chart_sugar" style="width: 600px; height: 300px; float: left;"></p>
+<p id="chart_cereals" style="width: 600px; height: 300px; float: right;"></p>
+
+<!-- <h2>Vegetables</h2>
+<p id="chart_sugar"></p> -->
+
+<h2 style="width: 600px; float: left;">Dairy</h2>
+<h2 style="width: 600px; float: right;">Protein Foods</h2>
+
+<p id="chart_milk" style="width: 600px; height: 300px; float: left;"></p>
+<p id="chart_meat" style="width: 600px; height: 300px; float: right;"></p>
+
+<h2 style="width: 600px; float: left;">Fruits</h2>
+<h2 style="width: 600px; float: left;">Others</h2>
+
+<p id="chart_fruits" style="width: 600px; height: 300px; float: left;"></p>
+<p id="chart_eggs" style="width: 600px; height: 300px; float: left;"></p>
+
+
+<aside>Mouseover the year to move forward and backwards through time.</aside>
+
+<p>A visualization in D3 of Gapminder’s <a href="http://gapminder.org/world/">Wealth & Health of Nations</a>, made famous by Hans Rosling’s memorable <a href="http://www.ted.com/talks/hans_rosling_shows_the_best_stats_you_ve_ever_seen.html">2006 TED talk</a>. It shows the dynamic fluctuation in per-capita GDP (<i>x</i>), urbanization (<i>y</i>) and KCal food intage (radius) of 184 nations over the last 41 years. Nations are colored by geographic region; mouseover to read their names. One can see the evolution of nations' urbanization in relation to their per-capita GDP as the motion of each country. </p>
+
+<p>The visualizations use <a href="http://en.wikipedia.org/wiki/Lerp_(computing)">linear interpolation</a> for missing data points. The lookup for the two interpolation values at each frame is accelerated using <a href="http://en.wikipedia.org/wiki/Binary_search_algorithm">bisection</a> of sorted arrays per dimension.
+
+
+<script src="http://d3js.org/d3.v3.min.js"></script>
+<script src="http://d3js.org/queue.v1.min.js"></script>
+
+<script>
+
+// Various accessors that specify the four dimensions of data to visualize.
+function x(d) { return d.income; }
+function y(d) { return  d.population; }
+function radius(d) { return d.lifeExpectancy; }
+function color(d) { return d.region; }
+function key(d) { return d.name; }
+
+// Chart dimensions.
+var margin = {top: 19.5, right: 19.5, bottom: 19.5, left: 99.5},
+    width = 1020 - margin.right,
+    height = 500 - margin.top - margin.bottom;
+
+// Various scales. These domains make assumptions of data, naturally.
+var xScale = d3.scale.log().domain([100, 1e5]).range([0, width]),
+    yScale = d3.scale.linear().domain([0, 1]).range([height, 0]),
+    radiusScale = d3.scale.sqrt().domain([0, 2000]).range([0, 20]),
+    colorScale = d3.scale.category10();
+
+var xScale_meat = d3.scale.log().domain([100, 1e5]).range([0, width/2]),
+    yScale_meat = d3.scale.linear().domain([0, 1]).range([height/2, 0]),
+    radiusScale_meat = d3.scale.sqrt().domain([0, 1]).range([0, 30]),
+    colorScale_meat = d3.scale.category10();
+
+// The x & y axes.
+var xAxis = d3.svg.axis().orient("bottom").scale(xScale).ticks(12, d3.format(",d")),
+    yAxis = d3.svg.axis().scale(yScale).orient("left");
+
+var xAxis_meat = d3.svg.axis().orient("bottom").scale(xScale_meat).ticks(12, d3.format(",d")),
+    yAxis_meat = d3.svg.axis().scale(yScale_meat).orient("left");
+
+// Create the SVG container and set the origin.
+var svg = d3.select("#chart").append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+    .attr("transform", "translate(" + margin.left + "," + margin.top + ")")
+    .attr("id","main-graph");
+
+var svg_sugar = d3.select("#chart_sugar").append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+    .attr("transform", "translate(" + margin.left + "," + margin.top + ")")
+    .attr("id","sub-graph-sugar");
+
+var svg_cereals = d3.select("#chart_cereals").append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+    .attr("transform", "translate(" + margin.left + "," + margin.top + ")")
+    .attr("id","sub-graph-sugar");
+
+var svg_eggs = d3.select("#chart_eggs").append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+    .attr("transform", "translate(" + margin.left + "," + margin.top + ")")
+    .attr("id","sub-graph-eggs");
+
+var svg_milk = d3.select("#chart_milk").append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+    .attr("transform", "translate(" + margin.left + "," + margin.top + ")")
+    .attr("id","sub-graph-milk");
+
+var svg_fruits = d3.select("#chart_fruits").append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+    .attr("transform", "translate(" + margin.left + "," + margin.top + ")")
+    .attr("id","sub-graph-fruits");
+
+var svg_meat = d3.select("#chart_meat").append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+    .attr("transform", "translate(" + margin.left + "," + margin.top + ")")
+    .attr("id","sub-graph-meat");
+
+// Add the x-axis.
+svg.append("g")
+    .attr("class", "x axis")
+    .attr("transform", "translate(0," + height + ")")
+    .call(xAxis);
+
+svg_sugar.append("g")
+    .attr("class", "x axis")
+    .attr("transform", "translate(0," + height/2 + ")")
+    .call(xAxis_meat);
+
+svg_cereals.append("g")
+    .attr("class", "x axis")
+    .attr("transform", "translate(0," + height/2 + ")")
+    .call(xAxis_meat);
+
+svg_eggs.append("g")
+    .attr("class", "x axis")
+    .attr("transform", "translate(0," + height/2 + ")")
+    .call(xAxis_meat);
+
+svg_milk.append("g")
+    .attr("class", "x axis")
+    .attr("transform", "translate(0," + height/2 + ")")
+    .call(xAxis_meat);
+
+svg_fruits.append("g")
+    .attr("class", "x axis")
+    .attr("transform", "translate(0," + height/2 + ")")
+    .call(xAxis_meat);
+
+svg_meat.append("g")
+    .attr("class", "x axis")
+    .attr("transform", "translate(0," + height/2 + ")")
+    .call(xAxis_meat);
+
+
+// Add the y-axis.
+svg.append("g")
+    .attr("class", "y axis")
+    .call(yAxis);
+
+svg_sugar.append("g")
+    .attr("class", "y axis")
+    .call(yAxis_meat);
+
+svg_cereals.append("g")
+    .attr("class", "y axis")
+    .call(yAxis_meat);
+
+svg_eggs.append("g")
+    .attr("class", "y axis")
+    .call(yAxis_meat);
+
+svg_milk.append("g")
+    .attr("class", "y axis")
+    .call(yAxis_meat);
+
+svg_fruits.append("g")
+    .attr("class", "y axis")
+    .call(yAxis_meat);
+
+svg_meat.append("g")
+    .attr("class", "y axis")
+    .call(yAxis_meat);
+
+// Add an x-axis label.
+svg.append("text")
+    .attr("class", "x label")
+    .attr("text-anchor", "end")
+    .attr("x", width)
+    .attr("y", height - 6)
+    .text("GDP per capita, inflation-adjusted (Int$)");
+
+svg_sugar.append("text")
+    .attr("class", "x label_meat")
+    .attr("text-anchor", "end")
+    .attr("x", width/2)
+    .attr("y", height/2 - 6)
+    .text("GDP per capita, inflation-adjusted (Int$)");
+
+svg_cereals.append("text")
+    .attr("class", "x label_meat")
+    .attr("text-anchor", "end")
+    .attr("x", width/2)
+    .attr("y", height/2 - 6)
+    .text("GDP per capita, inflation-adjusted (Int$)");
+
+svg_eggs.append("text")
+    .attr("class", "x label_meat")
+    .attr("text-anchor", "end")
+    .attr("x", width/2)
+    .attr("y", height/2 - 6)
+    .text("GDP per capita, inflation-adjusted (Int$)");
+
+svg_milk.append("text")
+    .attr("class", "x label_meat")
+    .attr("text-anchor", "end")
+    .attr("x", width/2)
+    .attr("y", height/2 - 6)
+    .text("GDP per capita, inflation-adjusted (Int$)");
+
+svg_fruits.append("text")
+    .attr("class", "x label_meat")
+    .attr("text-anchor", "end")
+    .attr("x", width/2)
+    .attr("y", height/2 - 6)
+    .text("GDP per capita, inflation-adjusted (Int$)");
+
+svg_meat.append("text")
+    .attr("class", "x label_meat")
+    .attr("text-anchor", "end")
+    .attr("x", width/2)
+    .attr("y", height/2 - 6)
+    .text("GDP per capita, inflation-adjusted (Int$)");
+
+// Add a y-axis label.
+svg.append("text")
+    .attr("class", "y label")
+    .attr("text-anchor", "end")
+    .attr("y", 6)
+    .attr("dy", ".75em")
+    .attr("transform", "rotate(-90)")
+    .text("Urbanization (%)");
+
+svg_sugar.append("text")
+    .attr("class", "y label_meat")
+    .attr("text-anchor", "end")
+    .attr("y", 6)
+    .attr("dy", ".75em")
+    .attr("transform", "rotate(-90)")
+    .text("Urbanization (%)");
+
+svg_cereals.append("text")
+    .attr("class", "y label_meat")
+    .attr("text-anchor", "end")
+    .attr("y", 6)
+    .attr("dy", ".75em")
+    .attr("transform", "rotate(-90)")
+    .text("Urbanization (%)");
+
+svg_eggs.append("text")
+    .attr("class", "y label_meat")
+    .attr("text-anchor", "end")
+    .attr("y", 6)
+    .attr("dy", ".75em")
+    .attr("transform", "rotate(-90)")
+    .text("Urbanization (%)");
+
+svg_milk.append("text")
+    .attr("class", "y label_meat")
+    .attr("text-anchor", "end")
+    .attr("y", 6)
+    .attr("dy", ".75em")
+    .attr("transform", "rotate(-90)")
+    .text("Urbanization (%)");
+
+svg_fruits.append("text")
+    .attr("class", "y label_meat")
+    .attr("text-anchor", "end")
+    .attr("y", 6)
+    .attr("dy", ".75em")
+    .attr("transform", "rotate(-90)")
+    .text("Urbanization (%)");
+
+svg_meat.append("text")
+    .attr("class", "y label_meat")
+    .attr("text-anchor", "end")
+    .attr("y", 6)
+    .attr("dy", ".75em")
+    .attr("transform", "rotate(-90)")
+    .text("Urbanization (%)");
+
+// Add the year label; the value is set on transition.
+var label = svg.append("text")
+    .attr("class", "year label")
+    .attr("text-anchor", "end")
+    // .attr("y", height - 24)
+    .attr("y",height-350)
+    .attr("x", 400)
+    .text(1970);
+
+var label_sugar = svg_sugar.append("text")
+    .attr("class", "year label_meat")
+    .attr("text-anchor", "end")
+    // .attr("y", height - 24)
+    .attr("y",height-400)
+    .attr("x", 210)
+    .text(1970);
+
+var label_cereals = svg_cereals.append("text")
+    .attr("class", "year label_meat")
+    .attr("text-anchor", "end")
+    // .attr("y", height - 24)
+    .attr("y",height-400)
+    .attr("x", 210)
+    .text(1970);
+
+var label_eggs = svg_eggs.append("text")
+    .attr("class", "year label_meat")
+    .attr("text-anchor", "end")
+    // .attr("y", height - 24)
+    .attr("y",height-400)
+    .attr("x", 210)
+    .text(1970);
+
+var label_fruits = svg_fruits.append("text")
+    .attr("class", "year label_meat")
+    .attr("text-anchor", "end")
+    // .attr("y", height - 24)
+    .attr("y",height-400)
+    .attr("x", 210)
+    .text(1970);
+
+var label_milk = svg_milk.append("text")
+    .attr("class", "year label_meat")
+    .attr("text-anchor", "end")
+    // .attr("y", height - 24)
+    .attr("y",height-400)
+    .attr("x", 210)
+    .text(1970);
+
+var label_meat = svg_meat.append("text")
+    .attr("class", "year label_meat")
+    .attr("text-anchor", "end")
+    // .attr("y", height - 24)
+    .attr("y",height-400)
+    .attr("x", 210)
+    .text(1970);
+
+// Load the data.
+// TOTAL
+d3.json("total_ratio.json", function(nations) {
+
+  // A bisector since many nation's data is sparsely-defined.
+  var bisect = d3.bisector(function(d) { return d[0]; });
+
+  // Add a dot per nation. Initialize the data at 1800, and set the colors.
+  var dot = svg.append("g")
+      .attr("class", "dots")
+    .selectAll(".dot")
+      .data(interpolateData(1970))
+    .enter().append("circle")
+      .attr("class", "dot")
+      .style("fill", function(d) { return colorScale(color(d)); })
+      .call(position)
+      .sort(order);
+
+  // Add a title.
+  dot.append("title")
+      .text(function(d) { return d.name; });
+
+  // Add an overlay for the year label.
+  var box = label.node().getBBox();
+
+  var overlay = svg.append("rect")
+        .attr("class", "overlay")
+        .attr("x", box.x)
+        .attr("y", box.y)
+        .attr("width", box.width)
+        .attr("height", box.height)
+        .on("mouseover", enableInteraction);
+
+  // Start a transition that interpolates the data based on year.
+  svg.transition()
+      .duration(60000)
+      .ease("linear")
+      .tween("year", tweenYear)
+      .each("end", enableInteraction);
+
+  // Positions the dots based on data.
+  function position(dot) {
+    dot .attr("cx", function(d) { return xScale(x(d)); })
+        .attr("cy", function(d) { return yScale(y(d)); })
+        .attr("r", function(d) { return radiusScale(radius(d)); });
+  }
+
+  // Defines a sort order so that the smallest dots are drawn on top.
+  function order(a, b) {
+    return radius(b) - radius(a);
+  }
+
+  // After the transition finishes, you can mouseover to change the year.
+  function enableInteraction() {
+    var yearScale = d3.scale.linear()
+        .domain([1970, 2010])
+        .range([box.x + 10, box.x + box.width - 10])
+        .clamp(true);
+
+    // Cancel the current transition, if any.
+    svg.transition().duration(0);
+
+    overlay
+        .on("mouseover", mouseover)
+        .on("mouseout", mouseout)
+        .on("mousemove", mousemove)
+        .on("touchmove", mousemove);
+
+    function mouseover() {
+      label.classed("active", true);
+    }
+
+    function mouseout() {
+      label.classed("active", false);
+    }
+
+    function mousemove() {
+      displayYear(yearScale.invert(d3.mouse(this)[0]));
+    }
+  }
+
+  // Tweens the entire chart by first tweening the year, and then the data.
+  // For the interpolated data, the dots and label are redrawn.
+  function tweenYear() {
+    var year = d3.interpolateNumber(1970, 2010);
+    return function(t) { displayYear(year(t)); };
+  }
+
+  // Updates the display to show the specified year.
+  function displayYear(year) {
+    dot.data(interpolateData(year), key).call(position).sort(order);
+    label.text(Math.round(year));
+  }
+
+  // Interpolates the dataset for the given (fractional) year.
+  function interpolateData(year) {
+    return nations.map(function(d) {
+      // console.log(d.name)
+      // console.log(d.region)
+      // console.log(d.income)
+      // console.log(d.lifeExpectancy)
+      // console.log(d.population)
+      return {
+        name: d.name,
+        region: d.region,
+        income: interpolateValues(d.income, year),
+        population: interpolateValues(d.population, year),
+        lifeExpectancy: interpolateValues(d.lifeExpectancy, year)
+      };
+    });
+  }
+
+  // Finds (and possibly interpolates) the value for the specified year.
+  function interpolateValues(values, year) {
+    // console.log(year)
+    // console.log(values)
+    var i = bisect.left(values, year, 0, values.length - 1),
+        a = values[i];
+    if (i > 0) {
+      var b = values[i - 1],
+          t = (year - a[0]) / (b[0] - a[0]);
+      return a[1] * (1 - t) + b[1] * t;
+    }
+    return a[1];
+  }
+});
+
+// Grains
+d3.json("sugar_ratio.json", function(nations) {
+
+  // A bisector since many nation's data is sparsely-defined.
+  var bisect = d3.bisector(function(d) { return d[0]; });
+
+  // Add a dot per nation. Initialize the data at 1800, and set the colors.
+  var dot = svg_cereals.append("g")
+      .attr("class", "dots")
+    .selectAll(".dot")
+      .data(interpolateData(1970))
+    .enter().append("circle")
+      .attr("class", "dot")
+      .style("fill", function(d) { return colorScale_meat(color(d)); })
+      .call(position)
+      .sort(order);
+
+  // Add a title.
+  dot.append("title")
+      .text(function(d) { return d.name; });
+
+  // Add an overlay for the year label.
+  var box = label.node().getBBox();
+
+  var overlay = svg_cereals.append("rect")
+        .attr("class", "overlay")
+        .attr("x", box.x)
+        .attr("y", box.y)
+        .attr("width", box.width*.5)
+        .attr("height", box.height*.6)
+        .on("mouseover", enableInteraction);
+
+  // Start a transition that interpolates the data based on year.
+  svg_cereals.transition()
+      .duration(60000)
+      .ease("linear")
+      .tween("year", tweenYear)
+      .each("end", enableInteraction);
+
+  // Positions the dots based on data.
+  function position(dot) {
+    dot .attr("cx", function(d) { return xScale_meat(x(d)); })
+        .attr("cy", function(d) { return yScale_meat(y(d)); })
+        .attr("r", function(d) { return radiusScale_meat(radius(d)); });
+  }
+
+  // Defines a sort order so that the smallest dots are drawn on top.
+  function order(a, b) {
+    return radius(b) - radius(a);
+  }
+
+  // After the transition finishes, you can mouseover to change the year.
+  function enableInteraction() {
+    var yearScale = d3.scale.linear()
+        .domain([1970, 2010])
+        .range([box.x, box.x + box.width*.5])
+        .clamp(true);
+
+    // Cancel the current transition, if any.
+    svg_cereals.transition().duration(0);
+
+    overlay
+        .on("mouseover", mouseover)
+        .on("mouseout", mouseout)
+        .on("mousemove", mousemove)
+        .on("touchmove", mousemove);
+
+    function mouseover() {
+      label_cereals.classed("active", true);
+    }
+
+    function mouseout() {
+      label_cereals.classed("active", false);
+    }
+
+    function mousemove() {
+      displayYear(yearScale.invert(d3.mouse(this)[0]));
+    }
+  }
+
+  // Tweens the entire chart by first tweening the year, and then the data.
+  // For the interpolated data, the dots and label are redrawn.
+  function tweenYear() {
+    var year = d3.interpolateNumber(1970, 2010);
+    return function(t) { displayYear(year(t)); };
+  }
+
+  // Updates the display to show the specified year.
+  function displayYear(year) {
+    dot.data(interpolateData(year), key).call(position).sort(order);
+    label_cereals.text(Math.round(year));
+  }
+
+  // Interpolates the dataset for the given (fractional) year.
+  function interpolateData(year) {
+    return nations.map(function(d) {
+      // console.log(d.name)
+      // console.log(d.region)
+      // console.log(d.income)
+      // console.log(d.lifeExpectancy)
+      // console.log(d.population)
+      return {
+        name: d.name,
+        region: d.region,
+        income: interpolateValues(d.income, year),
+        population: interpolateValues(d.population, year),
+        lifeExpectancy: interpolateValues(d.lifeExpectancy, year)
+      };
+    });
+  }
+
+  // Finds (and possibly interpolates) the value for the specified year.
+  function interpolateValues(values, year) {
+    // console.log(year)
+    // console.log(values)
+    var i = bisect.left(values, year, 0, values.length - 1),
+        a = values[i];
+    if (i > 0) {
+      var b = values[i - 1],
+          t = (year - a[0]) / (b[0] - a[0]);
+      return a[1] * (1 - t) + b[1] * t;
+    }
+    return a[1];
+  }
+});
+
+// Dairy
+d3.json("dairy_ratio.json", function(nations) {
+
+  // A bisector since many nation's data is sparsely-defined.
+  var bisect = d3.bisector(function(d) { return d[0]; });
+
+  // Add a dot per nation. Initialize the data at 1800, and set the colors.
+  var dot = svg_milk.append("g")
+      .attr("class", "dots")
+    .selectAll(".dot")
+      .data(interpolateData(1970))
+    .enter().append("circle")
+      .attr("class", "dot")
+      .style("fill", function(d) { return colorScale_meat(color(d)); })
+      .call(position)
+      .sort(order);
+
+  // Add a title.
+  dot.append("title")
+      .text(function(d) { return d.name; });
+
+  // Add an overlay for the year label.
+  var box = label.node().getBBox();
+
+  var overlay = svg_milk.append("rect")
+        .attr("class", "overlay")
+        .attr("x", box.x)
+        .attr("y", box.y)
+        .attr("width", box.width*.5)
+        .attr("height", box.height*.6)
+        .on("mouseover", enableInteraction);
+
+  // Start a transition that interpolates the data based on year.
+  svg_milk.transition()
+      .duration(60000)
+      .ease("linear")
+      .tween("year", tweenYear)
+      .each("end", enableInteraction);
+
+  // Positions the dots based on data.
+  function position(dot) {
+    dot .attr("cx", function(d) { return xScale_meat(x(d)); })
+        .attr("cy", function(d) { return yScale_meat(y(d)); })
+        .attr("r", function(d) { return radiusScale_meat(radius(d)); });
+  }
+
+  // Defines a sort order so that the smallest dots are drawn on top.
+  function order(a, b) {
+    return radius(b) - radius(a);
+  }
+
+  // After the transition finishes, you can mouseover to change the year.
+  function enableInteraction() {
+    var yearScale = d3.scale.linear()
+        .domain([1970, 2010])
+        .range([box.x, box.x + box.width*.5])
+        .clamp(true);
+
+    // Cancel the current transition, if any.
+    svg_milk.transition().duration(0);
+
+    overlay
+        .on("mouseover", mouseover)
+        .on("mouseout", mouseout)
+        .on("mousemove", mousemove)
+        .on("touchmove", mousemove);
+
+    function mouseover() {
+      label_milk.classed("active", true);
+    }
+
+    function mouseout() {
+      label_milk.classed("active", false);
+    }
+
+    function mousemove() {
+      displayYear(yearScale.invert(d3.mouse(this)[0]));
+    }
+  }
+
+  // Tweens the entire chart by first tweening the year, and then the data.
+  // For the interpolated data, the dots and label are redrawn.
+  function tweenYear() {
+    var year = d3.interpolateNumber(1970, 2010);
+    return function(t) { displayYear(year(t)); };
+  }
+
+  // Updates the display to show the specified year.
+  function displayYear(year) {
+    dot.data(interpolateData(year), key).call(position).sort(order);
+    label_milk.text(Math.round(year));
+  }
+
+  // Interpolates the dataset for the given (fractional) year.
+  function interpolateData(year) {
+    return nations.map(function(d) {
+      // console.log(d.name)
+      // console.log(d.region)
+      // console.log(d.income)
+      // console.log(d.lifeExpectancy)
+      // console.log(d.population)
+      return {
+        name: d.name,
+        region: d.region,
+        income: interpolateValues(d.income, year),
+        population: interpolateValues(d.population, year),
+        lifeExpectancy: interpolateValues(d.lifeExpectancy, year)
+      };
+    });
+  }
+
+  // Finds (and possibly interpolates) the value for the specified year.
+  function interpolateValues(values, year) {
+    // console.log(year)
+    // console.log(values)
+    var i = bisect.left(values, year, 0, values.length - 1),
+        a = values[i];
+    if (i > 0) {
+      var b = values[i - 1],
+          t = (year - a[0]) / (b[0] - a[0]);
+      return a[1] * (1 - t) + b[1] * t;
+    }
+    return a[1];
+  }
+});
+
+// MEAT
+d3.json("meat_ratio.json", function(nations) {
+
+  // A bisector since many nation's data is sparsely-defined.
+  var bisect = d3.bisector(function(d) { return d[0]; });
+
+  // Add a dot per nation. Initialize the data at 1800, and set the colors.
+  var dot = svg_meat.append("g")
+      .attr("class", "dots")
+    .selectAll(".dot")
+      .data(interpolateData(1970))
+    .enter().append("circle")
+      .attr("class", "dot")
+      .style("fill", function(d) { return colorScale_meat(color(d)); })
+      .call(position)
+      .sort(order);
+
+  // Add a title.
+  dot.append("title")
+      .text(function(d) { return d.name; });
+
+  // Add an overlay for the year label.
+  var box = label.node().getBBox();
+
+  var overlay = svg_meat.append("rect")
+        .attr("class", "overlay")
+        .attr("x", box.x)
+        .attr("y", box.y)
+        .attr("width", box.width*.5)
+        .attr("height", box.height*.6)
+        .on("mouseover", enableInteraction);
+
+  // Start a transition that interpolates the data based on year.
+  svg_meat.transition()
+      .duration(60000)
+      .ease("linear")
+      .tween("year", tweenYear)
+      .each("end", enableInteraction);
+
+  // Positions the dots based on data.
+  function position(dot) {
+    dot .attr("cx", function(d) { return xScale_meat(x(d)); })
+        .attr("cy", function(d) { return yScale_meat(y(d)); })
+        .attr("r", function(d) { return radiusScale_meat(radius(d)); });
+  }
+
+  // Defines a sort order so that the smallest dots are drawn on top.
+  function order(a, b) {
+    return radius(b) - radius(a);
+  }
+
+  // After the transition finishes, you can mouseover to change the year.
+  function enableInteraction() {
+    var yearScale = d3.scale.linear()
+        .domain([1970, 2010])
+        .range([box.x, box.x + box.width*.5])
+        .clamp(true);
+
+    // Cancel the current transition, if any.
+    svg_meat.transition().duration(0);
+
+    overlay
+        .on("mouseover", mouseover)
+        .on("mouseout", mouseout)
+        .on("mousemove", mousemove)
+        .on("touchmove", mousemove);
+
+    function mouseover() {
+      label_meat.classed("active", true);
+    }
+
+    function mouseout() {
+      label_meat.classed("active", false);
+    }
+
+    function mousemove() {
+      displayYear(yearScale.invert(d3.mouse(this)[0]));
+    }
+  }
+
+  // Tweens the entire chart by first tweening the year, and then the data.
+  // For the interpolated data, the dots and label are redrawn.
+  function tweenYear() {
+    var year = d3.interpolateNumber(1970, 2010);
+    return function(t) { displayYear(year(t)); };
+  }
+
+  // Updates the display to show the specified year.
+  function displayYear(year) {
+    dot.data(interpolateData(year), key).call(position).sort(order);
+    label_meat.text(Math.round(year));
+  }
+
+  // Interpolates the dataset for the given (fractional) year.
+  function interpolateData(year) {
+    return nations.map(function(d) {
+      // console.log(d.name)
+      // console.log(d.region)
+      // console.log(d.income)
+      // console.log(d.lifeExpectancy)
+      // console.log(d.population)
+      return {
+        name: d.name,
+        region: d.region,
+        income: interpolateValues(d.income, year),
+        population: interpolateValues(d.population, year),
+        lifeExpectancy: interpolateValues(d.lifeExpectancy, year)
+      };
+    });
+  }
+
+  // Finds (and possibly interpolates) the value for the specified year.
+  function interpolateValues(values, year) {
+    // console.log(year)
+    // console.log(values)
+    var i = bisect.left(values, year, 0, values.length - 1),
+        a = values[i];
+    if (i > 0) {
+      var b = values[i - 1],
+          t = (year - a[0]) / (b[0] - a[0]);
+      return a[1] * (1 - t) + b[1] * t;
+    }
+    return a[1];
+  }
+});
+
+// Vegetables
+d3.json("vegetables_ratio.json", function(nations) {
+
+  // A bisector since many nation's data is sparsely-defined.
+  var bisect = d3.bisector(function(d) { return d[0]; });
+
+  // Add a dot per nation. Initialize the data at 1800, and set the colors.
+  var dot = svg_sugar.append("g")
+      .attr("class", "dots")
+    .selectAll(".dot")
+      .data(interpolateData(1970))
+    .enter().append("circle")
+      .attr("class", "dot")
+      .style("fill", function(d) { return colorScale_meat(color(d)); })
+      .call(position)
+      .sort(order);
+
+  // Add a title.
+  dot.append("title")
+      .text(function(d) { return d.name; });
+
+  // Add an overlay for the year label.
+  var box = label.node().getBBox();
+
+  var overlay = svg_sugar.append("rect")
+        .attr("class", "overlay")
+        .attr("x", box.x)
+        .attr("y", box.y)
+        .attr("width", box.width*.5)
+        .attr("height", box.height*.6)
+        .on("mouseover", enableInteraction);
+
+  // Start a transition that interpolates the data based on year.
+  svg_sugar.transition()
+      .duration(60000)
+      .ease("linear")
+      .tween("year", tweenYear)
+      .each("end", enableInteraction);
+
+  // Positions the dots based on data.
+  function position(dot) {
+    dot .attr("cx", function(d) { return xScale_meat(x(d)); })
+        .attr("cy", function(d) { return yScale_meat(y(d)); })
+        .attr("r", function(d) { return radiusScale_meat(radius(d)); });
+  }
+
+  // Defines a sort order so that the smallest dots are drawn on top.
+  function order(a, b) {
+    return radius(b) - radius(a);
+  }
+
+  // After the transition finishes, you can mouseover to change the year.
+  function enableInteraction() {
+    var yearScale = d3.scale.linear()
+        .domain([1970, 2010])
+        .range([box.x, box.x + box.width*.5])
+        .clamp(true);
+
+    // Cancel the current transition, if any.
+    svg_sugar.transition().duration(0);
+
+    overlay
+        .on("mouseover", mouseover)
+        .on("mouseout", mouseout)
+        .on("mousemove", mousemove)
+        .on("touchmove", mousemove);
+
+    function mouseover() {
+      label_sugar.classed("active", true);
+    }
+
+    function mouseout() {
+      label_sugar.classed("active", false);
+    }
+
+    function mousemove() {
+      displayYear(yearScale.invert(d3.mouse(this)[0]));
+    }
+  }
+
+  // Tweens the entire chart by first tweening the year, and then the data.
+  // For the interpolated data, the dots and label are redrawn.
+  function tweenYear() {
+    var year = d3.interpolateNumber(1970, 2010);
+    return function(t) { displayYear(year(t)); };
+  }
+
+  // Updates the display to show the specified year.
+  function displayYear(year) {
+    dot.data(interpolateData(year), key).call(position).sort(order);
+    label_sugar.text(Math.round(year));
+  }
+
+  // Interpolates the dataset for the given (fractional) year.
+  function interpolateData(year) {
+    return nations.map(function(d) {
+      // console.log(d.name)
+      // console.log(d.region)
+      // console.log(d.income)
+      // console.log(d.lifeExpectancy)
+      // console.log(d.population)
+      return {
+        name: d.name,
+        region: d.region,
+        income: interpolateValues(d.income, year),
+        population: interpolateValues(d.population, year),
+        lifeExpectancy: interpolateValues(d.lifeExpectancy, year)
+      };
+    });
+  }
+
+  // Finds (and possibly interpolates) the value for the specified year.
+  function interpolateValues(values, year) {
+    // console.log(year)
+    // console.log(values)
+    var i = bisect.left(values, year, 0, values.length - 1),
+        a = values[i];
+    if (i > 0) {
+      var b = values[i - 1],
+          t = (year - a[0]) / (b[0] - a[0]);
+      return a[1] * (1 - t) + b[1] * t;
+    }
+    return a[1];
+  }
+});
+
+// Fruits
+d3.json("fruits_ratio.json", function(nations) {
+
+  // A bisector since many nation's data is sparsely-defined.
+  var bisect = d3.bisector(function(d) { return d[0]; });
+
+  // Add a dot per nation. Initialize the data at 1800, and set the colors.
+  var dot = svg_fruits.append("g")
+      .attr("class", "dots")
+    .selectAll(".dot")
+      .data(interpolateData(1970))
+    .enter().append("circle")
+      .attr("class", "dot")
+      .style("fill", function(d) { return colorScale_meat(color(d)); })
+      .call(position)
+      .sort(order);
+
+  // Add a title.
+  dot.append("title")
+      .text(function(d) { return d.name; });
+
+  // Add an overlay for the year label.
+  var box = label.node().getBBox();
+
+  var overlay = svg_fruits.append("rect")
+        .attr("class", "overlay")
+        .attr("x", box.x)
+        .attr("y", box.y)
+        .attr("width", box.width*.5)
+        .attr("height", box.height*.6)
+        .on("mouseover", enableInteraction);
+
+  // Start a transition that interpolates the data based on year.
+  svg_fruits.transition()
+      .duration(60000)
+      .ease("linear")
+      .tween("year", tweenYear)
+      .each("end", enableInteraction);
+
+  // Positions the dots based on data.
+  function position(dot) {
+    dot .attr("cx", function(d) { return xScale_meat(x(d)); })
+        .attr("cy", function(d) { return yScale_meat(y(d)); })
+        .attr("r", function(d) { return radiusScale_meat(radius(d)); });
+  }
+
+  // Defines a sort order so that the smallest dots are drawn on top.
+  function order(a, b) {
+    return radius(b) - radius(a);
+  }
+
+  // After the transition finishes, you can mouseover to change the year.
+  function enableInteraction() {
+    var yearScale = d3.scale.linear()
+        .domain([1970, 2010])
+        .range([box.x, box.x + box.width*.5])
+        .clamp(true);
+
+    // Cancel the current transition, if any.
+    svg_fruits.transition().duration(0);
+
+    overlay
+        .on("mouseover", mouseover)
+        .on("mouseout", mouseout)
+        .on("mousemove", mousemove)
+        .on("touchmove", mousemove);
+
+    function mouseover() {
+      label_fruits.classed("active", true);
+    }
+
+    function mouseout() {
+      label_fruits.classed("active", false);
+    }
+
+    function mousemove() {
+      displayYear(yearScale.invert(d3.mouse(this)[0]));
+    }
+  }
+
+  // Tweens the entire chart by first tweening the year, and then the data.
+  // For the interpolated data, the dots and label are redrawn.
+  function tweenYear() {
+    var year = d3.interpolateNumber(1970, 2010);
+    return function(t) { displayYear(year(t)); };
+  }
+
+  // Updates the display to show the specified year.
+  function displayYear(year) {
+    dot.data(interpolateData(year), key).call(position).sort(order);
+    label_fruits.text(Math.round(year));
+  }
+
+  // Interpolates the dataset for the given (fractional) year.
+  function interpolateData(year) {
+    return nations.map(function(d) {
+      console.log(d.name)
+      // console.log(d.region)
+      // console.log(d.income)
+      // console.log(d.lifeExpectancy)
+      // console.log(d.population)
+      return {
+        name: d.name,
+        region: d.region,
+        income: interpolateValues(d.income, year),
+        population: interpolateValues(d.population, year),
+        lifeExpectancy: interpolateValues(d.lifeExpectancy, year)
+      };
+    });
+  }
+
+  // Finds (and possibly interpolates) the value for the specified year.
+  function interpolateValues(values, year) {
+    // console.log(year)
+    // console.log(values)
+    var i = bisect.left(values, year, 0, values.length - 1),
+        a = values[i];
+    if (i > 0) {
+      var b = values[i - 1],
+          t = (year - a[0]) / (b[0] - a[0]);
+      return a[1] * (1 - t) + b[1] * t;
+    }
+    return a[1];
+  }
+});
+
+// Others
+d3.json("others_ratio.json", function(nations) {
+
+  // A bisector since many nation's data is sparsely-defined.
+  var bisect = d3.bisector(function(d) { return d[0]; });
+
+  // Add a dot per nation. Initialize the data at 1800, and set the colors.
+  var dot = svg_eggs.append("g")
+      .attr("class", "dots")
+    .selectAll(".dot")
+      .data(interpolateData(1970))
+    .enter().append("circle")
+      .attr("class", "dot")
+      .style("fill", function(d) { return colorScale_meat(color(d)); })
+      .call(position)
+      .sort(order);
+
+  // Add a title.
+  dot.append("title")
+      .text(function(d) { return d.name; });
+
+  // Add an overlay for the year label.
+  var box = label.node().getBBox();
+
+  var overlay = svg_eggs.append("rect")
+        .attr("class", "overlay")
+        .attr("x", box.x)
+        .attr("y", box.y)
+        .attr("width", box.width*.5)
+        .attr("height", box.height*.6)
+        .on("mouseover", enableInteraction);
+
+  // Start a transition that interpolates the data based on year.
+  svg_eggs.transition()
+      .duration(60000)
+      .ease("linear")
+      .tween("year", tweenYear)
+      .each("end", enableInteraction);
+
+  // Positions the dots based on data.
+  function position(dot) {
+    dot .attr("cx", function(d) { return xScale_meat(x(d)); })
+        .attr("cy", function(d) { return yScale_meat(y(d)); })
+        .attr("r", function(d) { return radiusScale_meat(radius(d)); });
+  }
+
+  // Defines a sort order so that the smallest dots are drawn on top.
+  function order(a, b) {
+    return radius(b) - radius(a);
+  }
+
+  // After the transition finishes, you can mouseover to change the year.
+  function enableInteraction() {
+    var yearScale = d3.scale.linear()
+        .domain([1970, 2010])
+        .range([box.x, box.x + box.width*.5])
+        .clamp(true);
+
+    // Cancel the current transition, if any.
+    svg_eggs.transition().duration(0);
+
+    overlay
+        .on("mouseover", mouseover)
+        .on("mouseout", mouseout)
+        .on("mousemove", mousemove)
+        .on("touchmove", mousemove);
+
+    function mouseover() {
+      label_eggs.classed("active", true);
+    }
+
+    function mouseout() {
+      label_eggs.classed("active", false);
+    }
+
+    function mousemove() {
+      displayYear(yearScale.invert(d3.mouse(this)[0]));
+    }
+  }
+
+  // Tweens the entire chart by first tweening the year, and then the data.
+  // For the interpolated data, the dots and label are redrawn.
+  function tweenYear() {
+    var year = d3.interpolateNumber(1970, 2010);
+    return function(t) { displayYear(year(t)); };
+  }
+
+  // Updates the display to show the specified year.
+  function displayYear(year) {
+    dot.data(interpolateData(year), key).call(position).sort(order);
+    label_eggs.text(Math.round(year));
+  }
+
+  // Interpolates the dataset for the given (fractional) year.
+  function interpolateData(year) {
+    return nations.map(function(d) {
+      // console.log(d.name)
+      // console.log(d.region)
+      // console.log(d.income)
+      // console.log(d.lifeExpectancy)
+      // console.log(d.population)
+      return {
+        name: d.name,
+        region: d.region,
+        income: interpolateValues(d.income, year),
+        population: interpolateValues(d.population, year),
+        lifeExpectancy: interpolateValues(d.lifeExpectancy, year)
+      };
+    });
+  }
+
+  // Finds (and possibly interpolates) the value for the specified year.
+  function interpolateValues(values, year) {
+    // console.log(year)
+    // console.log(values)
+    var i = bisect.left(values, year, 0, values.length - 1),
+        a = values[i];
+    if (i > 0) {
+      var b = values[i - 1],
+          t = (year - a[0]) / (b[0] - a[0]);
+      return a[1] * (1 - t) + b[1] * t;
+    }
+    return a[1];
+  }
+});
+
+</script>
